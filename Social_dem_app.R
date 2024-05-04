@@ -1,0 +1,325 @@
+library(shiny)
+library(leaflet)
+library(readr)
+library(dplyr)
+library(htmltools)
+library(maps)
+library(tidyr) 
+library(sf)
+library(ggplot2)
+library(scales)
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(scales)  # For percent formatting
+library(RColorBrewer)
+library(cowplot)
+
+ui <- fluidPage(
+  titlePanel("US Maps and Social Data"),
+  tabsetPanel(
+    tabPanel("US Listings Map",
+             h3("US Listings Map"),
+             p("Explore real estate listings across the US. This map integrates data on the best states to start a business, highlighting key economic indicators."),
+             leafletOutput("listingsMap"),
+             h4("Insights on Business Environment Across the US"),
+             p("Overall best state to start a business: North Dakota ranks as the top choice for launching a business in 2024. Its strong business climate, low cost of entry, and funding opportunities make it an optimal location for new ventures."),
+             p("Overall worst state to start a business: Vermont is at the bottom for starting a business. Factors such as startup costs, business climate, and potential obstacles for startups mark it as a less favorable option."),
+             p("Best and worst states by business survival rates: California leads with a high business survival rate of 81.5%, reflecting a thriving business environment. Conversely, Washington struggles with the lowest survival rate at 59.2%."),
+             p("States with the highest and lowest cost to register a business: Kentucky is the most budget-friendly state for business registration, charging only $40. In contrast, Massachusetts requires the highest fee of $500, posing a significant initial cost for startups."),
+             p("States with the most promising workforce: Massachusetts is notable for its educated workforce, with 46.65% holding a degree. Colorado and Vermont also excel in this area. Colorado additionally has the largest proportion of working-age population at 67.4%, closely followed by Massachusetts and California at 66.4%.")
+    ),
+    tabPanel("State Demographics Map",
+             h3("State Demographics and Analysis"),
+             p("View various demographic indicators and analysis across different states on the map."),
+             leafletOutput("statesMap"),
+             dataTableOutput("top5Summary"),
+             
+             # Analysis Text for the first plot
+             h4("Analysis of Economic Factors and Crime Rate"),
+             plotOutput("medianIncomeCrimePlot"),
+             p("The plot displays a scatterplot showing the negative correlation between median household income and crime rates. With an R-squared value of 0.722, there's evidence that higher income levels may contribute to lower crime rates, explaining approximately 72.2% of the variation in crime rates. The p-value of 0.013 suggests this relationship is statistically significant, reinforcing the economic impact on crime deterrence."),
+             
+             # Analysis Text for the second plot
+             h4("Analysis of Property Tax Rate and Crime Rate"),
+             plotOutput("propertyTaxCrimePlot"),
+             p("The plot illustrates a negative association between property tax rates and crime rates. The R-squared value of 0.163 demonstrates that property tax rates explain about 16.3% of the variability in crime rates. A higher tax rate shows a notable reduction in crime rates, with a 1% increase in property tax rate leading to a decrease of approximately 114.23 units in the crime rate per 100k. The relationship is statistically significant with a p-value of 0.004."),
+             
+             p("These insights suggest that states with higher median household incomes and property tax rates tend to have lower crime rates, although these factors alone do not encompass all determinants of crime rates."),
+             
+             selectInput("variableSelect", "Select Data to Display:",
+                         choices = c("Population", "Median Household Income", "Property Tax Rate",
+                                     "Income Tax Rate", "Crime Rate", "Business Survival Rate")),
+             plotOutput("variablePlot")
+             
+    ),
+    tabPanel("State Income Information",
+             h3("State Income Information"),
+             selectInput("selectedCountyIncome", "Select a County for Income Data:", choices = NULL),
+             plotOutput("incomeHistogram"),
+             verbatimTextOutput("incomeDataSummary"),
+             p("Demographic breakdown by age and race within the selected county, reflecting the local population structure.")
+    ),
+    tabPanel("County Age Distribution",
+             h3("County Age Distribution"),
+             selectInput("selectedCountyAge", "Select a County for Age Data:", choices = NULL),
+             plotOutput("ageHistogram"),
+             verbatimTextOutput("ageDataSummary"),
+             selectInput("selectedCountyPie", "Select a County for Race Data:", choices = NULL),
+             plotOutput("racePieChart"),
+             textOutput("selectedCountyText"),
+             p("Demographic breakdown by race within the selected county, reflecting the local racial composition.")
+    )
+  ))
+
+
+
+# Define server logic for the application
+server <- function(input, output, session) {
+  
+  # First Map: State Demographics
+  output$listingsMap <- renderLeaflet({
+    listingsData <- read_csv("shiny_app_data.csv") %>%
+      mutate(
+        popupText = paste("Class:", Building.Class, "<br>",
+                          "Size:", Building.Size, "<br>",
+                          "Price:", Price,"<br>",
+                          "Property Type", `Property Type`,"<br>",
+                          "Property URL", `Property URL`
+                          )
+      )
+    
+    leaflet(data = listingsData) %>%
+      addTiles() %>%
+      addMarkers(
+        lng = ~Latitude, lat = ~Longitude,
+        popup = ~popupText
+      )
+  })
+  
+  
+  # Second Map: Listings
+  statesData <- reactive({
+    read_csv("usa_state_data.csv") %>%
+      mutate(color = ifelse(Governor_Party == "Democratic", "blue", "red"),
+             State = tolower(State))
+  })
+  
+  output$statesMap <- renderLeaflet({
+    states_shape <- st_as_sf(map("state", plot = FALSE, fill = TRUE), crs = 4326)
+    states_shape$ID <- tolower(states_shape$ID)
+    
+    states_data <- statesData()
+    map_data <- left_join(states_shape, states_data, by = c("ID" = "State"))
+    map_data <- st_transform(map_data, crs = 4326)
+    
+    leaflet() %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      addPolygons(
+        data = map_data, 
+        fillColor = ~color, 
+        fillOpacity = 0.7, 
+        weight = 0.5, 
+        color = "#FFFFFF", 
+        popup = ~paste(
+          "State: ", ID, "<br>",
+          "Population: ", Population, "<br>",
+          "Governor Party: ", Governor_Party, "<br>",
+          "Median Household Income: ",Median_Household_Income, "<br>",
+          "Property Tax Rate (%): ", Property_Tax_Rate, "<br>",
+          "Income Tax Rate: ", Income_Tax_Rate, "<br>",
+          "Crime Rate (per 100k): ", Crime_Rate_per100k, "<br>",
+          "Business Survival Rate :", Business_Survival_Rate)
+      )
+    
+    
+  })
+  
+  output$medianIncomeCrimePlot <- renderPlot({
+    data <- statesData()
+    ggplot(data, aes(x = Median_Household_Income, y = Crime_Rate_per100k)) +
+      geom_point() +
+      geom_smooth(method = "lm", color = "blue", fill = "#BBDEFB") +
+      labs(x = "Median Household Income", y = "Crime Rate per 100k", 
+           title = "Median Household Income vs Crime Rate")
+  })
+  
+  output$propertyTaxCrimePlot <- renderPlot({
+    data <- statesData()
+    ggplot(data, aes(x = Property_Tax_Rate, y = Crime_Rate_per100k)) +
+      geom_point() +
+      geom_smooth(method = "lm", color = "blue", fill = "#BBDEFB") +
+      labs(x = "Property Tax Rate (%)", y = "Crime Rate per 100k", 
+           title = "Property Tax Rate vs Crime Rate")
+  })
+  
+  output$top5Summary <- renderDataTable({
+    data <- statesData()
+    top5_income <- head(data[order(-data$Median_Household_Income), ], 5)
+    top5_crime <- head(data[order(data$Crime_Rate_per100k), ], 5)
+    top5_combined <- data.frame(
+      "Top 5 Median Income" = top5_income$State,
+      "Income" = top5_income$Median_Household_Income,
+      "Top 5 Lowest Crime" = top5_crime$State,
+      "Crime Rate" = top5_crime$Crime_Rate_per100k
+    )
+    top5_combined
+  })
+  data <- reactive({ statesData() })
+  
+  # Output for the plot based on the selected variable
+  output$variablePlot <- renderPlot({
+    selected_variable <- switch(input$variableSelect,
+                                "Population" = "Population",
+                                "Median Household Income" = "Median_Household_Income",
+                                "Property Tax Rate" = "Property_Tax_Rate",
+                                "Income Tax Rate" = "Income_Tax_Rate",
+                                "Crime Rate" = "Crime_Rate_per100k", # Assuming this is the correct column name
+                                "Business Survival Rate" = "Business_Survival_Rate" # Assuming this is the correct column name
+    )
+    
+    ggplot(data(), aes_string(x = "State", y = selected_variable, fill = selected_variable)) +
+      geom_col() +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+      labs(x = "State", y = input$variableSelect, title = paste(input$variableSelect, "by State"))
+  })
+  
+  
+  
+  #Third page 
+  incomeData <- read_csv("Nj_Income_Cleaned.csv")
+  
+  observe({
+    updateSelectInput(session, "selectedCountyIncome", choices = names(incomeData)[-1])
+  })
+  
+  output$incomeHistogram <- renderPlot({
+    req(input$selectedCountyIncome)
+    selectedData <- incomeData %>%
+      select(`Label (Grouping)`, matches(input$selectedCountyIncome)) %>%
+      mutate(Percentage = as.numeric(gsub("%", "", .data[[input$selectedCountyIncome]])) / 100) %>%
+      na.omit()
+    
+    ggplot(selectedData, aes(x = `Label (Grouping)`, y = Percentage)) +
+      geom_bar(stat = "identity", fill = 'skyblue') +
+      labs(title = paste("Income Distribution in", input$selectedCountyIncome),
+           x = "Income Range", y = "Percentage") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  output$incomeDataSummary <- renderPrint({
+    req(input$selectedCountyIncome)  # Ensure that a county is selected
+    selectedData <- incomeData %>%
+      select(`Label (Grouping)`, all_of(input$selectedCountyIncome)) %>%
+      na.omit()  # Remove NA values to ensure data integrity
+    
+    if(nrow(selectedData) > 0) {
+      summary(selectedData)
+    } else {
+      print("No data available for the selected county.")
+    }
+  })
+  
+  # Fourth page  Logic for County Age Distribution
+  ageSexData <- read_csv("Nj_Sex_Age_Cleaned.csv")
+  
+  observe({
+    updateSelectInput(session, "selectedCountyAge", choices = names(ageSexData)[-1])
+  })
+  
+  output$ageHistogram <- renderPlot({
+    req(input$selectedCountyAge)  # Ensure a county is selected
+    selectedData <- ageSexData %>%
+      filter(`Label (Grouping)` %in% c("5 to 9 years", "10 to 14 years", "15 to 19 years", "20 to 24 years",
+                                       "25 to 34 years", "35 to 44 years", "45 to 54 years", "55 to 59 years",
+                                       "60 to 64 years", "65 to 74 years", "75 to 84 years", "85 years and over")) %>%
+      select(`Label (Grouping)`, all_of(input$selectedCountyAge)) %>%
+      mutate(Count = as.numeric(gsub(",", "", .data[[input$selectedCountyAge]]))) %>%
+      na.omit()
+    
+    ggplot(selectedData, aes(x = `Label (Grouping)`, y = Count, fill = Count)) +
+      geom_bar(stat = "identity", fill = 'skyblue') +
+      labs(title = paste("Age Distribution in", input$selectedCountyAge),
+           x = "Age Group", y = "Count") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  output$ageDataSummary <- renderPrint({
+    req(input$selectedCountyAge)  # Ensure a county is selected
+    selectedData <- ageSexData %>%
+      filter(`Label (Grouping)` %in% c("5 to 9 years", "10 to 14 years", "15 to 19 years", "20 to 24 years",
+                                       "25 to 34 years", "35 to 44 years", "45 to 54 years", "55 to 59 years",
+                                       "60 to 64 years", "65 to 74 years", "75 to 84 years", "85 years and over")) %>%
+      select(`Label (Grouping)`, all_of(input$selectedCountyAge)) %>%
+      mutate(Count = as.numeric(gsub(",", "", .data[[input$selectedCountyAge]]))) %>%
+      na.omit()
+    
+    if(nrow(selectedData) > 0) {
+      summary(selectedData)
+    } else {
+      print("No data available for the selected age range.")
+    }
+  })
+  
+  
+  ### pie chart
+  njSexAgeData <- reactive({
+    read_csv("NJ_sex_data_subset.csv")
+  })
+  
+  # Observer to update dropdown options based on column names (excluding the first column)
+  observe({
+    updateSelectInput(session, "selectedCountyPie", choices = names(njSexAgeData())[-1])
+  })
+  
+  output$racePieChart <- renderPlot({
+    req(input$selectedCountyPie)  # Ensure a county is selected
+    selectedCounty <- input$selectedCountyPie  # Get the selected county
+    
+    # Prepare the data for plotting
+    race_data <- njSexAgeData() %>%
+      select(Race, all_of(selectedCounty)) %>%
+      mutate(Count = as.numeric(gsub("[^0-9]", "", .data[[selectedCounty]])))  # Clean the numeric data
+    
+    total_population <- race_data %>%
+      filter(Race == "Total population") %>%
+      pull(selectedCounty)  %>%  # Pull the population column
+      sum()  # Sum all values in case there are multiple entries for total population
+    
+    race_data <- race_data %>%
+      filter(Race != "Total population") %>%
+      mutate(Percentage = Count / total_population * 100)  # Calculate the percentage
+    
+    # Combine the race names with their counts for legend labels
+    race_data$LegendLabel <- paste(race_data$Race, race_data$Count)
+    
+    # Use RColorBrewer for color palette
+    num_categories <- nrow(race_data)
+    color_palette <- brewer.pal(n = min(num_categories, 8), name = "Dark2")  # Dark2 palette for distinct colors
+    # Repeat colors if there are more categories than colors in the palette
+    color_palette <- rep(color_palette, length.out = num_categories)
+    # Shuffle the colors to prevent same colors from being next to each other
+    set.seed(123)  # Set seed for reproducibility
+    color_palette <- sample(color_palette)
+    
+    # Assign colors to legend labels
+    race_colors <- setNames(color_palette, race_data$LegendLabel)
+    
+    # Plot the pie chart with a custom color palette and the new legend labels
+    ggplot(race_data, aes(x = "", y = Percentage, fill = LegendLabel)) +
+      geom_bar(width = 1, stat = "identity") +
+      coord_polar("y", start = 0) +
+      scale_fill_manual(values = race_colors) +
+      theme_void() +
+      theme(legend.position = "right") +
+      guides(fill = guide_legend(title = paste("Racial Composition in", selectedCounty))) +
+      labs(fill = "Race")
+  })
+  
+}
+
+# Replace 'path_to/...' with the actual file paths where your CSV files are stored.
+shinyApp(ui = ui, server = server)
