@@ -35,4 +35,16 @@ UI - the app contains 4 pages/panels
 3rd page - Barplot visual of household income by counties in New Jersey. 
 
 4th page - Barplot and pie chart visual of Age, sex, and ethnicity data of New Jersey counties. 
+<img width="1440" alt="Screenshot 2024-05-05 at 12 57 56 PM" src="https://github.com/dhruvalpatel2/loopnet_scrapping_Soccomp/assets/98505497/c99f9dda-256b-462c-9059-5f49eec34d39">
+
+<img width="1436" alt="Screenshot 2024-05-05 at 12 58 32 PM" src="https://github.com/dhruvalpatel2/loopnet_scrapping_Soccomp/assets/98505497/8181bc0f-5748-40f8-8bca-cd7ca9095eea">
+
+<img width="1428" alt="Screenshot 2024-05-05 at 12 58 51 PM" src="https://github.com/dhruvalpatel2/loopnet_scrapping_Soccomp/assets/98505497/8133fa9c-0484-440b-9366-3227c12f9a41">
+
+<img width="1075" alt="Screenshot 2024-05-05 at 12 59 24 PM" src="https://github.com/dhruvalpatel2/loopnet_scrapping_Soccomp/assets/98505497/18f7df90-18e1-4d03-9b58-9d072e86ab33">
+
+
+
+
+
  
