@@ -1,6 +1,7 @@
 Social Impact On US Businesses 
 Contributors - Dhruval Patel, Manan Patel 
 
+https://cd353g-dhruval-patel.shinyapps.io/Socapp/ 
 
 Why this App  - Initially started building this app to have business listings along with the impact on businesses in those areas so we came up with the idea of creating this app using R-shiny which allowed us to create multiple visualizations, and interactive maps with the data we screaped. 
 
